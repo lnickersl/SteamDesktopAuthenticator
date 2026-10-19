@@ -1,15 +1,21 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using SteamAuth;
-using System.Drawing.Drawing2D;
 
 namespace Steam_Desktop_Authenticator
 {
     public partial class ConfirmationFormWeb : Form
     {
         private SteamGuardAccount steamAccount;
+        private readonly Dictionary<string, Image> iconCache = new Dictionary<string, Image>();
+        private static readonly HttpClient httpClient = new HttpClient();
 
         public ConfirmationFormWeb(SteamGuardAccount steamAccount)
         {
@@ -19,8 +25,6 @@ namespace Steam_Desktop_Authenticator
         }
         private async Task LoadData()
         {
-            this.splitContainer1.Panel2.Controls.Clear();
-
             // Check for a valid refresh token first
             if (steamAccount.Session.IsRefreshTokenExpired())
             {
@@ -48,13 +52,16 @@ namespace Steam_Desktop_Authenticator
             {
                 var confirmations = await steamAccount.FetchConfirmationsAsync();
 
+                // Build all rows first; the current list stays visible until the swap below
+                var rows = new List<Control>();
+
                 if (confirmations == null || confirmations.Length == 0)
                 {
                     Label errorLabel = new Label() { Text = "Nothing to confirm/cancel", AutoSize = true, ForeColor = Color.Black, Location = new Point(150, 20) };
-                    this.splitContainer1.Panel2.Controls.Add(errorLabel);
+                    rows.Add(errorLabel);
                 }
 
-                foreach (var confirmation in confirmations)
+                foreach (var confirmation in confirmations ?? Array.Empty<Confirmation>())
                 {
                     Panel panel = new Panel() { Dock = DockStyle.Top, Height = 120 };
                     panel.Paint += (s, e) =>
@@ -68,15 +75,9 @@ namespace Steam_Desktop_Authenticator
                     if (!string.IsNullOrEmpty(confirmation.Icon))
                     {
                         PictureBox pictureBox = new PictureBox() { Width = 60, Height = 60, Location = new Point(20, 20), SizeMode = PictureBoxSizeMode.Zoom };
-                        try
-                        {
-                            pictureBox.Load(confirmation.Icon);
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine("Failed to load avatar: " + ex.Message);
-                        }
                         panel.Controls.Add(pictureBox);
+                        // Icons are loaded asynchronously after the row is shown, never blocking the UI
+                        _ = LoadIconAsync(pictureBox, confirmation.Icon);
                     }
 
                     Label nameLabel = new Label()
@@ -125,7 +126,28 @@ namespace Steam_Desktop_Authenticator
                     };
                     panel.Controls.Add(summaryLabel);
 
-                    this.splitContainer1.Panel2.Controls.Add(panel);
+                    rows.Add(panel);
+                }
+
+                // Swap old rows for new ones in a single layout pass
+                var container = this.splitContainer1.Panel2;
+                container.SuspendLayout();
+                try
+                {
+                    foreach (Control old in container.Controls.Cast<Control>().ToArray())
+                    {
+                        old.Dispose();
+                    }
+                    container.Controls.Clear();
+
+                    foreach (var row in rows)
+                    {
+                        container.Controls.Add(row);
+                    }
+                }
+                finally
+                {
+                    container.ResumeLayout(true);
                 }
             }
             catch (Exception ex)
@@ -135,22 +157,107 @@ namespace Steam_Desktop_Authenticator
             }
         }
 
+        /// <summary>
+        /// Loads a confirmation icon off the UI thread, reusing cached images when possible.
+        /// </summary>
+        private async Task LoadIconAsync(PictureBox target, string url)
+        {
+            try
+            {
+                Image image;
+                if (iconCache.TryGetValue(url, out image))
+                {
+                    // Cached image may have been disposed with its previous row - refetch if so
+                    try
+                    {
+                        var _ = image.Width;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        iconCache.Remove(url);
+                        image = null;
+                    }
+                }
+
+                if (image == null)
+                {
+                    byte[] bytes = await httpClient.GetByteArrayAsync(url);
+                    using (var stream = new System.IO.MemoryStream(bytes))
+                    using (var loaded = System.Drawing.Image.FromStream(stream))
+                    {
+                        image = new System.Drawing.Bitmap(loaded); // detach from the stream
+                    }
+                    iconCache[url] = image;
+                }
+
+                if (!target.IsDisposed && !this.IsDisposed)
+                {
+                    target.Image = image;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to load avatar: " + ex.Message);
+            }
+        }
+
         private async void btnAccept_Click(object sender, EventArgs e)
         {
-            var button = (ConfirmationButton)sender;
-            var confirmation = button.Confirmation;
-            bool result = await steamAccount.AcceptConfirmation(confirmation);
-
-            await this.LoadData();
+            await HandleConfirmationAction(sender, accept: true);
         }
 
         private async void btnCancel_Click(object sender, EventArgs e)
         {
+            await HandleConfirmationAction(sender, accept: false);
+        }
+
+        /// <summary>
+        /// Sends a single confirmation action; on success removes only that row from the list
+        /// instead of reloading everything.
+        /// </summary>
+        private async Task HandleConfirmationAction(object sender, bool accept)
+        {
             var button = (ConfirmationButton)sender;
             var confirmation = button.Confirmation;
-            bool result = await steamAccount.DenyConfirmation(confirmation);
+            var row = button.Parent;
 
-            await this.LoadData();
+            // Prevent double-clicks while the request is in flight
+            button.Enabled = false;
+            try
+            {
+                bool result = accept
+                    ? await steamAccount.AcceptConfirmation(confirmation)
+                    : await steamAccount.DenyConfirmation(confirmation);
+
+                if (!result)
+                {
+                    MessageBox.Show(
+                        accept ? "Failed to accept this confirmation." : "Failed to cancel this confirmation.",
+                        "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    button.Enabled = true;
+                    return;
+                }
+
+                // Action succeeded - drop just this row, no network reload needed
+                if (row != null && row.Parent != null)
+                {
+                    var container = row.Parent;
+                    container.Controls.Remove(row);
+                    row.Dispose();
+
+                    // Show empty state if that was the last confirmation
+                    if (!container.Controls.OfType<Panel>().Any())
+                    {
+                        Label emptyLabel = new Label() { Text = "Nothing to confirm/cancel", AutoSize = true, ForeColor = Color.Black, Location = new Point(150, 20) };
+                        container.Controls.Add(emptyLabel);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                button.Enabled = true;
+                MessageBox.Show("Something went wrong:\n" + ex.Message, "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
 
