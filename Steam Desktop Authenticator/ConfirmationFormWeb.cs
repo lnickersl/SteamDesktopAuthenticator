@@ -63,7 +63,8 @@ namespace Steam_Desktop_Authenticator
 
                 foreach (var confirmation in confirmations ?? Array.Empty<Confirmation>())
                 {
-                    Panel panel = new Panel() { Dock = DockStyle.Top, Height = 120 };
+                    // Anchored instead of docked: AutoScroll does not work with docked controls
+                    Panel panel = new Panel() { Height = 120, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
                     panel.Paint += (s, e) =>
                     {
                         using (LinearGradientBrush brush = new LinearGradientBrush(panel.ClientRectangle, Color.Black, Color.DarkCyan, 90F))
@@ -144,6 +145,7 @@ namespace Steam_Desktop_Authenticator
                     {
                         container.Controls.Add(row);
                     }
+                    LayoutConfirmationRows(container);
                 }
                 finally
                 {
@@ -154,6 +156,29 @@ namespace Steam_Desktop_Authenticator
             {
                 Label errorLabel = new Label() { Text = "Something went wrong:\n" + ex.Message, AutoSize = true, ForeColor = Color.Red, Location = new Point(20, 20) };
                 this.splitContainer1.Panel2.Controls.Add(errorLabel);
+            }
+        }
+
+        /// <summary>
+        /// Stacks confirmation rows top-to-bottom manually. Replaces Dock=Top (AutoScroll
+        /// ignores docked controls) while preserving its visual order: last added row on top.
+        /// </summary>
+        private void LayoutConfirmationRows(Control container)
+        {
+            var rowPanels = container.Controls.Cast<Control>()
+                .Where(c => c is Panel)
+                .ToList();
+
+            int y = 0;
+            int width = container.ClientSize.Width;
+            // Iterate in reverse add order so the most recently added row renders at the top,
+            // matching the previous Dock=Top stacking behavior.
+            for (int i = rowPanels.Count - 1; i >= 0; i--)
+            {
+                Control row = rowPanels[i];
+                row.Location = new Point(0, y);
+                row.Size = new Size(width, row.Height);
+                y += row.Height;
             }
         }
 
@@ -250,6 +275,10 @@ namespace Steam_Desktop_Authenticator
                     {
                         Label emptyLabel = new Label() { Text = "Nothing to confirm/cancel", AutoSize = true, ForeColor = Color.Black, Location = new Point(150, 20) };
                         container.Controls.Add(emptyLabel);
+                    }
+                    else
+                    {
+                        LayoutConfirmationRows(container);
                     }
                 }
             }
