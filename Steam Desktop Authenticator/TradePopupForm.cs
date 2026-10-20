@@ -23,6 +23,19 @@ namespace Steam_Desktop_Authenticator
             lblStatus.Text = "";
         }
 
+        // Keep this instance alive for the periodic checker: closing via X only hides it.
+        // A disposed popup would throw on the next Popup() call from the timer.
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                this.Hide();
+                return;
+            }
+            base.OnFormClosing(e);
+        }
+
         public SteamGuardAccount Account
         {
             get { return acc; }
@@ -42,6 +55,12 @@ namespace Steam_Desktop_Authenticator
 
         private void btnAccept_Click(object sender, EventArgs e)
         {
+            if (acc == null || confirms.Count == 0)
+            {
+                Reset();
+                return;
+            }
+
             if (!accept2)
             {
                 // Allow user to confirm first
@@ -60,6 +79,12 @@ namespace Steam_Desktop_Authenticator
 
         private void btnDeny_Click(object sender, EventArgs e)
         {
+            if (acc == null || confirms.Count == 0)
+            {
+                Reset();
+                return;
+            }
+
             if (!deny2)
             {
                 lblStatus.Text = "Press Deny again to confirm";

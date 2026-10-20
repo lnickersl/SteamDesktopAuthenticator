@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using SteamAuth;
 using System.Collections.Generic;
@@ -19,6 +20,14 @@ namespace Steam_Desktop_Authenticator
         private List<string> updatedSessions = new List<string>();
         private Manifest manifest;
         private static SemaphoreSlim confirmationsSemaphore = new SemaphoreSlim(1, 1);
+
+        // Periodic confirmation check health tracking
+        private const int RequestTimeoutMs = 30000;
+        private const int MaxConsecutiveCheckFailures = 5;
+        private const int MaxCheckIntervalMs = 300000; // 5 minutes backoff cap
+        private int confirmationCheckFailures = 0;
+        private bool checkFailureNotified = false;
+        private readonly HashSet<SteamGuardAccount> refreshPromptsShown = new HashSet<SteamGuardAccount>();
 
         private long steamTime = 0;
         private long currentSteamChunk = 0;
@@ -127,10 +136,6 @@ namespace Steam_Desktop_Authenticator
         private void btnTradeConfirmations_Click(object sender, EventArgs e)
         {
             if (currentAccount == null) return;
-
-            string oText = btnTradeConfirmations.Text;
-            btnTradeConfirmations.Text = "Loading...";
-            btnTradeConfirmations.Text = oText;
 
             ConfirmationFormWeb confirms = new ConfirmationFormWeb(currentAccount);
             confirms.Show();
@@ -244,6 +249,11 @@ namespace Steam_Desktop_Authenticator
         private void menuLoginAgain_Click(object sender, EventArgs e)
         {
             this.PromptRefreshLogin(currentAccount);
+            // If the login succeeded, un-pause automatic confirmation checks
+            if (currentAccount != null)
+            {
+                ResumeChecksIfSessionValid(currentAccount);
+            }
         }
 
         private void menuImportAccount_Click(object sender, EventArgs e)
@@ -409,108 +419,313 @@ namespace Steam_Desktop_Authenticator
 
         private async void timerSteamGuard_Tick(object sender, EventArgs e)
         {
-            lblStatus.Text = "Aligning time with Steam...";
-            steamTime = await TimeAligner.GetSteamTimeAsync();
-            lblStatus.Text = "";
-
-            currentSteamChunk = steamTime / 30L;
-            int secondsUntilChange = (int)(steamTime - (currentSteamChunk * 30L));
-
-            loadAccountInfo();
-            if (currentAccount != null)
+            // Top-level guard: an escaping exception here would otherwise crash the app
+            try
             {
-                pbTimeout.Value = 30 - secondsUntilChange;
+                lblStatus.Text = "Aligning time with Steam...";
+                steamTime = await TimeAligner.GetSteamTimeAsync();
+                lblStatus.Text = "";
+
+                currentSteamChunk = steamTime / 30L;
+                int secondsUntilChange = (int)(steamTime - (currentSteamChunk * 30L));
+
+                loadAccountInfo();
+                if (currentAccount != null)
+                {
+                    pbTimeout.Value = 30 - secondsUntilChange;
+                }
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = "";
+                Console.WriteLine("Steam Guard timer error: " + ex.Message);
             }
         }
 
         private async void timerTradesPopup_Tick(object sender, EventArgs e)
         {
-            if (currentAccount == null || popupFrm.Visible) return;
+            if (currentAccount == null || manifest == null) return;
             if (!confirmationsSemaphore.Wait(0))
             {
                 return; //Only one thread may access this critical section at once. Mutex is a bad choice here because it'll cause a pileup of threads.
             }
 
+            try
+            {
+                await CheckConfirmationsAsync();
+            }
+            catch (Exception ex)
+            {
+                // Last-resort guard: never let an exception skip Release() below,
+                // otherwise all future ticks would silently stop.
+                HandleCheckFailure(ex);
+            }
+            finally
+            {
+                confirmationsSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Runs one round of confirmation checks for the relevant accounts.
+        /// Failures are recorded (with backoff) instead of being swallowed silently.
+        /// </summary>
+        private async Task CheckConfirmationsAsync()
+        {
             List<Confirmation> confs = new List<Confirmation>();
             Dictionary<SteamGuardAccount, List<Confirmation>> autoAcceptConfirmations = new Dictionary<SteamGuardAccount, List<Confirmation>>();
+            Exception firstFailure = null;
 
             SteamGuardAccount[] accs =
                 manifest.CheckAllAccounts ? allAccounts : new SteamGuardAccount[] { currentAccount };
 
-            try
+            foreach (var acc in accs)
             {
-                lblStatus.Text = "Checking confirmations...";
-
-                foreach (var acc in accs)
+                // Refresh token expired: prompt once per account, pause checks until a
+                // successful login instead of spamming dialogs every tick.
+                if (IsRefreshTokenExpiredSafe(acc))
                 {
-                    // Check for a valid refresh token first
-                    if (acc.Session.IsRefreshTokenExpired())
+                    if (!refreshPromptsShown.Contains(acc))
                     {
+                        refreshPromptsShown.Add(acc);
+                        timerTradesPopup.Enabled = false;
                         MessageBox.Show("Your session for account " + acc.AccountName + " has expired. You will be prompted to login again.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         PromptRefreshLogin(acc);
-                        break;
+                        ResumeChecksIfSessionValid(acc);
                     }
 
-                    // Check for a valid access token, refresh it if needed
-                    if (acc.Session.IsAccessTokenExpired())
+                    if (IsRefreshTokenExpiredSafe(acc))
                     {
-                        try
-                        {
-                            lblStatus.Text = "Refreshing session...";
-                            await acc.Session.RefreshAccessToken();
-                            lblStatus.Text = "Checking confirmations...";
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            break;
-                        }
-                    }
-
-                    try
-                    {
-                        Confirmation[] tmp = await acc.FetchConfirmationsAsync();
-                        foreach (var conf in tmp)
-                        {
-                            if ((conf.ConfType == Confirmation.EMobileConfirmationType.MarketListing && manifest.AutoConfirmMarketTransactions) ||
-                                (conf.ConfType == Confirmation.EMobileConfirmationType.Trade && manifest.AutoConfirmTrades))
-                            {
-                                if (!autoAcceptConfirmations.ContainsKey(acc))
-                                    autoAcceptConfirmations[acc] = new List<Confirmation>();
-                                autoAcceptConfirmations[acc].Add(conf);
-                            }
-                            else
-                                confs.Add(conf);
-                        }
-                    }
-                    catch (Exception)
-                    {
-
+                        // Still expired: keep automatic checks paused until "Login again" succeeds.
+                        timerTradesPopup.Enabled = false;
+                        lblStatus.Text = "Session expired - checks paused";
+                        return;
                     }
                 }
 
-                lblStatus.Text = "";
-
-                if (confs.Count > 0)
+                try
                 {
+                    lblStatus.Text = "Checking confirmations...";
+
+                    // Check for a valid access token, refresh it if needed
+                    if (IsAccessTokenExpiredSafe(acc))
+                    {
+                        lblStatus.Text = "Refreshing session...";
+                        await WithTimeout(acc.Session.RefreshAccessToken(), RequestTimeoutMs, "Session refresh");
+                    }
+
+                    Confirmation[] tmp = await WithTimeout(acc.FetchConfirmationsAsync(), RequestTimeoutMs, "Confirmation fetch");
+                    foreach (var conf in tmp)
+                    {
+                        if ((conf.ConfType == Confirmation.EMobileConfirmationType.MarketListing && manifest.AutoConfirmMarketTransactions) ||
+                            (conf.ConfType == Confirmation.EMobileConfirmationType.Trade && manifest.AutoConfirmTrades))
+                        {
+                            if (!autoAcceptConfirmations.ContainsKey(acc))
+                                autoAcceptConfirmations[acc] = new List<Confirmation>();
+                            autoAcceptConfirmations[acc].Add(conf);
+                        }
+                        else
+                            confs.Add(conf);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Record but keep checking the remaining accounts
+                    if (firstFailure == null)
+                        firstFailure = ex;
+                }
+            }
+
+            lblStatus.Text = "";
+
+            if (confs.Count > 0)
+            {
+                try
+                {
+                    EnsurePopupAlive();
                     popupFrm.Confirmations = confs.ToArray();
                     popupFrm.Popup();
                 }
-                if (autoAcceptConfirmations.Count > 0)
+                catch (Exception ex)
                 {
-                    foreach (var acc in autoAcceptConfirmations.Keys)
+                    if (firstFailure == null)
+                        firstFailure = ex;
+                }
+            }
+
+            if (autoAcceptConfirmations.Count > 0)
+            {
+                foreach (var acc in autoAcceptConfirmations.Keys)
+                {
+                    try
                     {
                         var confirmations = autoAcceptConfirmations[acc].ToArray();
-                        await acc.AcceptMultipleConfirmations(confirmations);
+                        await WithTimeout(acc.AcceptMultipleConfirmations(confirmations), RequestTimeoutMs, "Auto-accept");
+                    }
+                    catch (Exception ex)
+                    {
+                        if (firstFailure == null)
+                            firstFailure = ex;
                     }
                 }
             }
-            catch (SteamGuardAccount.WGTokenInvalidException)
+
+            if (firstFailure == null)
             {
-                lblStatus.Text = "";
+                HandleCheckSuccess();
+            }
+            else
+            {
+                HandleCheckFailure(firstFailure);
+            }
+        }
+
+        /// <summary>
+        /// A single successful check resets the failure counter and restores the normal interval.
+        /// </summary>
+        private void HandleCheckSuccess()
+        {
+            confirmationCheckFailures = 0;
+            checkFailureNotified = false;
+
+            int baseInterval = Math.Max(manifest?.PeriodicCheckingInterval ?? 5, 1) * 1000;
+            if (timerTradesPopup.Interval != baseInterval)
+            {
+                timerTradesPopup.Interval = baseInterval;
+            }
+        }
+
+        /// <summary>
+        /// Counts consecutive failures: logs every one, backs off the check interval
+        /// (up to 5 minutes) after too many in a row, and notifies the user once via tray balloon.
+        /// </summary>
+        private void HandleCheckFailure(Exception ex)
+        {
+            confirmationCheckFailures++;
+            Console.WriteLine("Confirmation check failed (" + confirmationCheckFailures + " consecutive): " + ex);
+
+            if (confirmationCheckFailures < MaxConsecutiveCheckFailures)
+            {
+                return;
             }
 
-            confirmationsSemaphore.Release();
+            // Back off so a broken session/network isn't hammered every few seconds
+            int baseInterval = Math.Max(manifest?.PeriodicCheckingInterval ?? 5, 1) * 1000;
+            int newInterval = Math.Min(Math.Max(timerTradesPopup.Interval * 2, baseInterval), MaxCheckIntervalMs);
+            if (timerTradesPopup.Interval != newInterval)
+            {
+                timerTradesPopup.Interval = newInterval;
+            }
+
+            if (!checkFailureNotified)
+            {
+                checkFailureNotified = true;
+                string message = ex.Message;
+                if (message.Length > 200)
+                {
+                    message = message.Substring(0, 200) + "...";
+                }
+                trayIcon.ShowBalloonTip(
+                    10000,
+                    "Steam Desktop Authenticator",
+                    "Automatic confirmation checks are failing: " + message + " Checks will keep retrying with a longer interval.",
+                    ToolTipIcon.Warning);
+            }
+        }
+
+        /// <summary>
+        /// Prompts for login and resumes the check timer if the account's session is valid afterwards.
+        /// </summary>
+        private void ResumeChecksIfSessionValid(SteamGuardAccount acc)
+        {
+            if (acc == null || IsRefreshTokenExpiredSafe(acc))
+            {
+                return;
+            }
+
+            refreshPromptsShown.Remove(acc);
+            HandleCheckSuccess();
+            if (manifest != null)
+            {
+                timerTradesPopup.Enabled = manifest.PeriodicChecking;
+            }
+        }
+
+        /// <summary>
+        /// Replaces the trade popup if it was closed/disposed, and points it at the current account.
+        /// </summary>
+        private void EnsurePopupAlive()
+        {
+            if (popupFrm == null || popupFrm.IsDisposed)
+            {
+                popupFrm = new TradePopupForm();
+            }
+            if (currentAccount != null)
+            {
+                popupFrm.Account = currentAccount;
+            }
+        }
+
+        /// <summary>
+        /// Malformed refresh token is treated as expired (forces re-login) instead of crashing the tick.
+        /// </summary>
+        private static bool IsRefreshTokenExpiredSafe(SteamGuardAccount acc)
+        {
+            try
+            {
+                return acc.Session.IsRefreshTokenExpired();
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Malformed access token is treated as expired (triggers a refresh attempt) instead of crashing the tick.
+        /// </summary>
+        private static bool IsAccessTokenExpiredSafe(SteamGuardAccount acc)
+        {
+            try
+            {
+                return acc.Session.IsAccessTokenExpired();
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Awaits a task but fails fast after a timeout, so a hung Steam request can never
+        /// hold confirmationsSemaphore indefinitely (which would stop all future checks).
+        /// </summary>
+        private static async Task WithTimeout(Task task, int timeoutMs, string operation)
+        {
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+            {
+                ObserveFault(task);
+                throw new TimeoutException(operation + " timed out after " + (timeoutMs / 1000) + " seconds.");
+            }
+            await task;
+        }
+
+        private static async Task<T> WithTimeout<T>(Task<T> task, int timeoutMs, string operation)
+        {
+            if (await Task.WhenAny(task, Task.Delay(timeoutMs)) != task)
+            {
+                ObserveFault(task);
+                throw new TimeoutException(operation + " timed out after " + (timeoutMs / 1000) + " seconds.");
+            }
+            return await task;
+        }
+
+        /// <summary>
+        /// Prevents a late fault on an abandoned task from becoming an unobserved exception.
+        /// </summary>
+        private static void ObserveFault(Task task)
+        {
+            task.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // Other methods
