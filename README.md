@@ -7,15 +7,33 @@
   A desktop implementation of Steam's mobile authenticator app.<br/>
   <sup><b>We are not affiliated with Steam or Scrap.TF in any way!</b> This project is run by community volunteers.
 </p>
-<h3 align="center">
-  <p>ATTENTION: Steam Desktop Authenticator is no longer supported and will not receive any more updates.</br> You should only use Steam's official mobile app to login to your account. Using SDA or any other tool is dangerous and puts your account at risk.</p>
-  <p>WARNING: Recently there have been fake versions of SDA floating around that will steal your Steam account. Never download SDA from any place other than this github repo!</p>
-</h3>
 <h3 align="center" style="margin-bottom:0">
-  <a href="https://github.com/Jessecar96/SteamDesktopAuthenticator/releases/latest">[Download Here]</a>
+  <a href="https://github.com/Jessecar96/SteamDesktopAuthenticator/releases/latest">[Download Original Here]</a>
 </h3>
 <p align="center">Supports Windows 10 and up.</p>
 <br>
+
+## Fork
+This is my fork, where I fix some bugs and features that bothered me for years of using original program.
+100% of patches done using AI agent. I only inspect the code and use latest version as a form of testing...
+Since it's for my personal use there is no "releases" and no .exe to download. If you want to try it - you'll have to download the project and build it yourself
+
+### What changed
+#### Trade Confirmations
+- Confirmations page now loads faster by loading content in parallel
+- Confirmations page now has a scroll bar which is buggy, but does the job
+- Confirmations page now doesn't reload after each confirmation, but waits for request to finish and removes the element from the list instead
+- Confirmations auto-check logic and error handling rework
+- Max delay between confirmations checks increased from 100 to 999 seconds
+
+#### Errors
+- Error messages are now appear as a small rectangle in right bottom corner for 3 seconds
+- Added display for confirmation error and trade confirmations auto-check errors
+
+#### Other
+- Removed deprecation warning on launch
+
+## Legacy description
 
 **Clicking "Download ZIP" will not work!** This project uses git submodules so you must use git to download it properly. Using [GitHub Desktop](https://desktop.github.com/) is an easy way to do that.
 
