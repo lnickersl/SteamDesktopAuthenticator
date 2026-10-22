@@ -55,7 +55,7 @@ namespace Steam_Desktop_Authenticator
                 else
                 {
                     // Could not find either.
-                    MessageBox.Show("This folder does not contain either a manifest.json or an maFiles folder.\nPlease select the location where you had Steam Desktop Authenticator installed.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    new ToastForm("This folder does not contain either a manifest.json or an maFiles folder.\nPlease select the location where you had Steam Desktop Authenticator installed.").Show();
                     return;
                 }
 
@@ -86,7 +86,7 @@ namespace Steam_Desktop_Authenticator
                     // Manifest file was corrupted, generate a new one.
                     try
                     {
-                        MessageBox.Show("Your settings were unexpectedly corrupted and were reset to defaults.", "Steam Desktop Authenticator", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                        new ToastForm("Your settings were unexpectedly corrupted and were reset to defaults.").Show();
                         man = Manifest.GenerateNewManifest(true);
                     }
                     catch (MaFileEncryptedException)

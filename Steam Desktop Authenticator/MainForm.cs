@@ -176,7 +176,7 @@ namespace Steam_Desktop_Authenticator
 
                 if (newPassKey != confirmPassKey)
                 {
-                    MessageBox.Show("Passkeys do not match.");
+                    new ToastForm("Passkeys do not match.").Show();
                     return;
                 }
 
@@ -188,7 +188,7 @@ namespace Steam_Desktop_Authenticator
                 string action = newPassKey == null ? "remove" : "change";
                 if (!manifest.ChangeEncryptionKey(curPassKey, newPassKey))
                 {
-                    MessageBox.Show("Unable to " + action + " passkey.");
+                    new ToastForm("Unable to " + action + " passkey.").Show();
                 }
                 else
                 {
@@ -232,7 +232,7 @@ namespace Steam_Desktop_Authenticator
         {
             if (manifest.Encrypted)
             {
-                MessageBox.Show("You cannot remove accounts from the manifest file while it is encrypted.", "Remove from manifest", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("You cannot remove accounts from the manifest file while it is encrypted.").Show();
             }
             else
             {
@@ -277,7 +277,7 @@ namespace Steam_Desktop_Authenticator
             // Check for a valid refresh token first
             if (currentAccount.Session.IsRefreshTokenExpired())
             {
-                MessageBox.Show("Your session has expired. Use the login again button under the selected account menu.", "Deactivate Authenticator", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Your session has expired. Use the login again button under the selected account menu.").Show();
                 return;
             }
 
@@ -290,7 +290,7 @@ namespace Steam_Desktop_Authenticator
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Deactivate Authenticator Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    new ToastForm("Deactivate Authenticator Error: " + ex.Message).Show();
                     return;
                 }
             }
@@ -324,7 +324,7 @@ namespace Steam_Desktop_Authenticator
                 string enteredCode = confirmationDialog.txtBox.Text.ToUpper();
                 if (enteredCode != confCode)
                 {
-                    MessageBox.Show("Confirmation codes do not match. Steam Guard not removed.");
+                    new ToastForm("Confirmation codes do not match. Steam Guard not removed.").Show();
                     return;
                 }
 
@@ -337,12 +337,12 @@ namespace Steam_Desktop_Authenticator
                 }
                 else
                 {
-                    MessageBox.Show("Steam Guard failed to deactivate.");
+                    new ToastForm("Steam Guard failed to deactivate.").Show();
                 }
             }
             else
             {
-                MessageBox.Show("Steam Guard was not removed. No action was taken.");
+                new ToastForm("Steam Guard was not removed. No action was taken.").Show();
             }
         }
 
@@ -489,7 +489,7 @@ namespace Steam_Desktop_Authenticator
                     {
                         refreshPromptsShown.Add(acc);
                         timerTradesPopup.Enabled = false;
-                        MessageBox.Show("Your session for account " + acc.AccountName + " has expired. You will be prompted to login again.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        new ToastForm("Your session for account " + acc.AccountName + " has expired. You will be prompted to login again.").Show();
                         PromptRefreshLogin(acc);
                         ResumeChecksIfSessionValid(acc);
                     }
@@ -916,7 +916,7 @@ namespace Steam_Desktop_Authenticator
             }
             catch (Exception)
             {
-                MessageBox.Show("Failed to check for updates.");
+                new ToastForm("Failed to check for updates.").Show();
             }
         }
 

@@ -63,7 +63,7 @@ namespace Steam_Desktop_Authenticator
                 // Manifest file was corrupted, generate a new one.
                 try
                 {
-                    MessageBox.Show("Your settings were unexpectedly corrupted and were reset to defaults.", "Steam Desktop Authenticator", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                    new ToastForm("Your settings were unexpectedly corrupted and were reset to defaults.").Show();
                     man = Manifest.GenerateNewManifest(true);
                 }
                 catch (MaFileEncryptedException)

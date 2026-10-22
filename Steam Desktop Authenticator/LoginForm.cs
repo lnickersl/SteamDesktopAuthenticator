@@ -39,7 +39,7 @@ namespace Steam_Desktop_Authenticator
             }
             catch (Exception)
             {
-                MessageBox.Show("Failed to find your account. Try closing and re-opening SDA.", "Login Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Failed to find your account. Try closing and re-opening SDA.").Show();
                 this.Close();
             }
         }
@@ -102,7 +102,7 @@ namespace Steam_Desktop_Authenticator
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Steam Login Error: " + ex.Message).Show();
                 this.Close();
                 return;
             }
@@ -115,7 +115,7 @@ namespace Steam_Desktop_Authenticator
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Steam Login Error: " + ex.Message).Show();
                 this.Close();
                 return;
             }
@@ -153,7 +153,7 @@ namespace Steam_Desktop_Authenticator
             var result = MessageBox.Show("Steam account login succeeded. Press OK to continue adding SDA as your authenticator.", "Steam Login", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
             if (result == DialogResult.Cancel)
             {
-                MessageBox.Show("Adding authenticator aborted.", "Steam Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Adding authenticator aborted.").Show();
                 ResetLoginButton();
                 return;
             }
@@ -170,7 +170,7 @@ namespace Steam_Desktop_Authenticator
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Error adding your authenticator: " + ex.Message, "Steam Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    new ToastForm("Error adding your authenticator: " + ex.Message).Show();
                     ResetLoginButton();
                     return;
                 }
@@ -193,12 +193,12 @@ namespace Steam_Desktop_Authenticator
                         break;
 
                     case AuthenticatorLinker.LinkResult.AuthenticatorPresent:
-                        MessageBox.Show("This account already has an authenticator linked. You must remove that authenticator to add SDA as your authenticator.", "Steam Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        new ToastForm("This account already has an authenticator linked. You must remove that authenticator to add SDA as your authenticator.").Show();
                         this.Close();
                         return;
 
                     case AuthenticatorLinker.LinkResult.FailureAddingPhone:
-                        MessageBox.Show("Failed to add your phone number. Please try again or use a different phone number.", "Steam Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        new ToastForm("Failed to add your phone number. Please try again or use a different phone number.").Show();
                         linker.PhoneNumber = null;
                         break;
 
@@ -211,7 +211,7 @@ namespace Steam_Desktop_Authenticator
                         break;
 
                     case AuthenticatorLinker.LinkResult.GeneralFailure:
-                        MessageBox.Show("Error adding your authenticator.", "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        new ToastForm("Error adding your authenticator.").Show();
                         this.Close();
                         return;
                 }
@@ -236,7 +236,7 @@ namespace Steam_Desktop_Authenticator
                         passKeyValid = manifest.VerifyPasskey(passKey);
                         if (!passKeyValid)
                         {
-                            MessageBox.Show("That passkey is invalid. Please enter the same passkey you used for your other accounts.");
+                            new ToastForm("That passkey is invalid. Please enter the same passkey you used for your other accounts.").Show();
                         }
                     }
                     else
@@ -251,7 +251,7 @@ namespace Steam_Desktop_Authenticator
             if (!manifest.SaveAccount(linker.LinkedAccount, passKey != null, passKey))
             {
                 manifest.RemoveAccount(linker.LinkedAccount);
-                MessageBox.Show("Unable to save mobile authenticator file. The mobile authenticator has not been linked.");
+                new ToastForm("Unable to save mobile authenticator file. The mobile authenticator has not been linked.").Show();
                 this.Close();
                 return;
             }
@@ -274,7 +274,7 @@ namespace Steam_Desktop_Authenticator
                 confirmRevocationCode.ShowDialog();
                 if (confirmRevocationCode.txtBox.Text.ToUpper() != linker.LinkedAccount.RevocationCode)
                 {
-                    MessageBox.Show("Revocation code incorrect; the authenticator has not been linked.");
+                    new ToastForm("Revocation code incorrect; the authenticator has not been linked.").Show();
                     manifest.RemoveAccount(linker.LinkedAccount);
                     this.Close();
                     return;
@@ -328,7 +328,7 @@ namespace Steam_Desktop_Authenticator
                         passKeyValid = man.VerifyPasskey(passKey);
                         if (!passKeyValid)
                         {
-                            MessageBox.Show("That passkey is invalid. Please enter the same passkey you used for your other accounts.", "Steam Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            new ToastForm("That passkey is invalid. Please enter the same passkey you used for your other accounts.").Show();
                         }
                     }
                     else

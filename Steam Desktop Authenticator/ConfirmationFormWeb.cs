@@ -28,7 +28,7 @@ namespace Steam_Desktop_Authenticator
             // Check for a valid refresh token first
             if (steamAccount.Session.IsRefreshTokenExpired())
             {
-                MessageBox.Show("Your session has expired. Use the login again button under the selected account menu.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                new ToastForm("Your session has expired. Use the login again button under the selected account menu.").Show();
                 this.Close();
                 return;
             }
@@ -42,7 +42,7 @@ namespace Steam_Desktop_Authenticator
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    new ToastForm("Steam Login Error: " + ex.Message).Show();
                     this.Close();
                     return;
                 }

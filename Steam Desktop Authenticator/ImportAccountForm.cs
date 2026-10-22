@@ -38,7 +38,7 @@ namespace Steam_Desktop_Authenticator
                 bool AppManifestData_encrypted = AppManifestData.Encrypted;
                 if (AppManifestData_encrypted == true)
                 {
-                    MessageBox.Show("You can't import an .maFile because the existing account in the app is encrypted.\nDecrypt it and try again.");
+                    new ToastForm("You can't import an .maFile because the existing account in the app is encrypted.\nDecrypt it and try again.").Show();
                     this.Close();
                 }
                 else if (AppManifestData_encrypted == false)
@@ -47,13 +47,13 @@ namespace Steam_Desktop_Authenticator
                 }
                 else
                 {
-                    MessageBox.Show("invalid value for variable 'encrypted' inside manifest.json");
+                    new ToastForm("invalid value for variable 'encrypted' inside manifest.json").Show();
                     this.Close();
                 }
             }
             else
             {
-                MessageBox.Show("An Error occurred, Restart the program!");
+                new ToastForm("An Error occurred, Restart the program!").Show();
             }
             #endregion
 
@@ -107,7 +107,7 @@ namespace Steam_Desktop_Authenticator
 
                                 if (loginForm.Session == null || loginForm.Session.SteamID == 0)
                                 {
-                                    MessageBox.Show("Login failed. Try to import this account again.", "Account Import", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    new ToastForm("Login failed. Try to import this account again.").Show();
                                     return;
                                 }
 
@@ -176,7 +176,7 @@ namespace Steam_Desktop_Authenticator
                                 catch (Exception)
                                 {
                                     ReadManifestEx = "1";
-                                    MessageBox.Show("Invalid content inside manifest.json!\nImport Failed.");
+                                    new ToastForm("Invalid content inside manifest.json!\nImport Failed.").Show();
                                 }
 
 
@@ -191,7 +191,7 @@ namespace Steam_Desktop_Authenticator
 
                                         if (decryptedText == null)
                                         {
-                                            MessageBox.Show("Decryption Failed.\nImport Failed.");
+                                            new ToastForm("Decryption Failed.\nImport Failed.").Show();
                                         }
                                         else
                                         {
@@ -206,7 +206,7 @@ namespace Steam_Desktop_Authenticator
 
                                                 if (loginForm.Session == null || loginForm.Session.SteamID == 0)
                                                 {
-                                                    MessageBox.Show("Login failed. Try to import this account again.", "Account Import", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                                    new ToastForm("Login failed. Try to import this account again.").Show();
                                                     return;
                                                 }
 
@@ -223,21 +223,21 @@ namespace Steam_Desktop_Authenticator
                                     {
                                         if (ImportFileName_Found == "0")
                                         {
-                                            MessageBox.Show("Account not found inside manifest.json.\nImport Failed.");
+                                            new ToastForm("Account not found inside manifest.json.\nImport Failed.").Show();
                                         }
                                         else if (Salt_Found == null && IV_Found == null)
                                         {
-                                            MessageBox.Show("manifest.json does not contain encrypted data.\nYour account may be unencrypted!\nImport Failed.");
+                                            new ToastForm("manifest.json does not contain encrypted data.\nYour account may be unencrypted!\nImport Failed.").Show();
                                         }
                                         else
                                         {
                                             if (IV_Found == null)
                                             {
-                                                MessageBox.Show("manifest.json does not contain: encryption_iv\nImport Failed.");
+                                                new ToastForm("manifest.json does not contain: encryption_iv\nImport Failed.").Show();
                                             }
                                             else if (IV_Found == null)
                                             {
-                                                MessageBox.Show("manifest.json does not contain: encryption_salt\nImport Failed.");
+                                                new ToastForm("manifest.json does not contain: encryption_salt\nImport Failed.").Show();
                                             }
                                         }
                                     }
@@ -248,7 +248,7 @@ namespace Steam_Desktop_Authenticator
                             }
                             else
                             {
-                                MessageBox.Show("manifest.json is missing!\nImport Failed.");
+                                new ToastForm("manifest.json is missing!\nImport Failed.").Show();
                             }
                             #endregion //Import Encripted maFile END
                         }
@@ -256,7 +256,7 @@ namespace Steam_Desktop_Authenticator
                     }
                     catch (Exception)
                     {
-                        MessageBox.Show("This file is not a valid SteamAuth maFile.\nImport Failed.");
+                        new ToastForm("This file is not a valid SteamAuth maFile.\nImport Failed.").Show();
                     }
                 }
             }

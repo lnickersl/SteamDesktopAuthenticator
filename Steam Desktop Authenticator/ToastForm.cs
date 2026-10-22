@@ -11,8 +11,9 @@ namespace Steam_Desktop_Authenticator
     /// </summary>
     public class ToastForm : Form
     {
-        private const int AutoCloseDelayMs = 2000;
+        private const int AutoCloseDelayMs = 3000;
         private readonly Timer closeTimer;
+        private static ToastForm current; // only one toast on screen at a time
 
         public ToastForm(string message)
         {
@@ -21,12 +22,22 @@ namespace Steam_Desktop_Authenticator
             TopMost = true;
             Opacity = 0.75; // semi-transparent
             BackColor = Color.FromArgb(30, 30, 30);
-            Size = new Size(260, 70);
             StartPosition = FormStartPosition.Manual;
 
             // Bottom-right corner of the working area (taskbar-aware), small margin
             Rectangle area = Screen.PrimaryScreen.WorkingArea;
+
+            // Auto-height so longer warning texts stay readable (never taller than 1/3 of the screen)
+            Size textSize = TextRenderer.MeasureText(message, Font,
+                new Size(276, area.Height / 3),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            Width = 300;
+            Height = Math.Max(70, textSize.Height + 24);
             Location = new Point(area.Right - Width - 10, area.Bottom - Height - 10);
+
+            // Replace a toast that is still on screen so they never overlap
+            current?.Close();
+            current = this;
 
             Label label = new Label()
             {
@@ -49,6 +60,10 @@ namespace Steam_Desktop_Authenticator
         {
             closeTimer.Stop();
             closeTimer.Dispose();
+            if (current == this)
+            {
+                current = null;
+            }
             base.OnFormClosed(e);
         }
     }
