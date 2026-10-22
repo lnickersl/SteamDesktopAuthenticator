@@ -256,9 +256,10 @@ namespace Steam_Desktop_Authenticator
 
                 if (!result)
                 {
-                    MessageBox.Show(
-                        accept ? "Failed to accept this confirmation." : "Failed to cancel this confirmation.",
-                        "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    // Non-blocking toast instead of a modal MessageBox
+                    new ToastForm(
+                        accept ? "Failed to accept this confirmation." : "Failed to cancel this confirmation.")
+                        .Show();
                     button.Enabled = true;
                     return;
                 }
@@ -285,7 +286,8 @@ namespace Steam_Desktop_Authenticator
             catch (Exception ex)
             {
                 button.Enabled = true;
-                MessageBox.Show("Something went wrong:\n" + ex.Message, "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Non-blocking toast instead of a modal MessageBox
+                new ToastForm("Something went wrong:\n" + ex.Message).Show();
             }
         }
 
