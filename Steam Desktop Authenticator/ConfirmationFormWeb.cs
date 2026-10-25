@@ -140,6 +140,9 @@ namespace Steam_Desktop_Authenticator
                         old.Dispose();
                     }
                     container.Controls.Clear();
+                    // Drop any stale scroll offset: rows added while scrolled would
+                    // land below the visible top and leave white space
+                    container.AutoScrollPosition = new Point(0, 0);
 
                     foreach (var row in rows)
                     {
@@ -168,6 +171,21 @@ namespace Steam_Desktop_Authenticator
             var rowPanels = container.Controls.Cast<Control>()
                 .Where(c => c is Panel)
                 .ToList();
+            if (rowPanels.Count == 0)
+            {
+                return;
+            }
+
+            // Row Location is interpreted relative to the current scroll offset, so
+            // laying out while the list is scrolled would push every row down by the
+            // scroll amount and leave white space at the top. Lay out from a zero
+            // scroll position, then restore the scroll position.
+            ScrollableControl scrollable = container as ScrollableControl;
+            Point savedScroll = scrollable != null ? scrollable.AutoScrollPosition : Point.Empty;
+            if (scrollable != null)
+            {
+                scrollable.AutoScrollPosition = new Point(0, 0);
+            }
 
             int y = 0;
             int width = container.ClientSize.Width;
@@ -179,6 +197,14 @@ namespace Steam_Desktop_Authenticator
                 row.Location = new Point(0, y);
                 row.Size = new Size(width, row.Height);
                 y += row.Height;
+            }
+
+            if (scrollable != null && (savedScroll.X != 0 || savedScroll.Y != 0))
+            {
+                // The getter returns a negative Y when scrolled down, while the setter
+                // scrolls down for positive values - restore with the sign flipped.
+                // Out-of-range values are clamped if the list became shorter.
+                scrollable.AutoScrollPosition = new Point(-savedScroll.X, -savedScroll.Y);
             }
         }
 
@@ -274,6 +300,12 @@ namespace Steam_Desktop_Authenticator
                     // Show empty state if that was the last confirmation
                     if (!container.Controls.OfType<Panel>().Any())
                     {
+                        // No rows left - drop the stale scroll offset before showing the label
+                        ScrollableControl scrollable = container as ScrollableControl;
+                        if (scrollable != null)
+                        {
+                            scrollable.AutoScrollPosition = new Point(0, 0);
+                        }
                         Label emptyLabel = new Label() { Text = "Nothing to confirm/cancel", AutoSize = true, ForeColor = Color.Black, Location = new Point(150, 20) };
                         container.Controls.Add(emptyLabel);
                     }
